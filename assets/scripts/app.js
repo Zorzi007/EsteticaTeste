@@ -6,6 +6,46 @@ const navToggle = document.getElementById('navToggle');
 const siteNav = document.querySelector('.site-nav');
 const navLinks = siteNav ? [...siteNav.querySelectorAll('[data-nav-link]')] : [];
 
+const FALLBACK_IMAGE_DATA_URL = (() => {
+    const svgMarkup = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+            <defs>
+                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#141a24" />
+                    <stop offset="100%" stop-color="#0a0f17" />
+                </linearGradient>
+            </defs>
+            <rect width="1600" height="900" fill="url(#gradient)" />
+            <g fill="#ff3b3f" font-family="'Space Grotesk', 'Manrope', 'Segoe UI', sans-serif" text-anchor="middle">
+                <text x="50%" y="45%" font-size="68" opacity="0.9">Imagem indisponível</text>
+                <text x="50%" y="58%" font-size="28" opacity="0.6">Verifique sua conexão ou tente novamente</text>
+            </g>
+        </svg>`;
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svgMarkup.trim())}`;
+})();
+
+// Gracefully replace broken image sources with inline SVG placeholder.
+const registerImageFallbacks = () => {
+    const images = document.querySelectorAll('img');
+    images.forEach(image => {
+        image.addEventListener('error', () => {
+            if (image.dataset.hasFallback === 'true') {
+                return;
+            }
+            image.dataset.hasFallback = 'true';
+            image.srcset = '';
+            image.src = FALLBACK_IMAGE_DATA_URL;
+            image.classList.add('is-fallback');
+        });
+
+        if (image.complete && image.naturalWidth === 0) {
+            image.dispatchEvent(new Event('error'));
+        }
+    });
+};
+
+registerImageFallbacks();
+
 const THEME_STORAGE_KEY = 'apexforge-theme';
 const dataLayer = window.dataLayer || (window.dataLayer = []);
 
@@ -214,30 +254,40 @@ const telemetryCanvas = document.getElementById('telemetryChart');
 const telemetryButtons = document.querySelectorAll('[data-telemetry]');
 const telemetryCaption = document.querySelector('.telemetry__caption');
 const telemetryDefaultCaption = telemetryCaption?.dataset.default ?? '';
+const telemetryVisual = document.querySelector('.telemetry__visual');
+const telemetryTooltip = telemetryVisual ? document.createElement('div') : null;
+
+if (telemetryTooltip) {
+    telemetryTooltip.className = 'telemetry__tooltip';
+    telemetryTooltip.setAttribute('role', 'status');
+    telemetryTooltip.setAttribute('aria-live', 'polite');
+    telemetryTooltip.textContent = telemetryDefaultCaption;
+    telemetryVisual.appendChild(telemetryTooltip);
+}
 
 const telemetryLapTimes = [0, 9, 18, 27, 36, 45, 54, 63, 72, 81];
 const telemetryProfiles = {
-    vulcan: {
-        label: 'Apex Vulcan',
+    ferrari: {
+        label: 'Ferrari 458 Speciale',
         color: '#ff3b3f',
-        speed: [0, 184, 268, 318, 346, 332, 316, 335, 352, 368],
-        regen: [0, 14, 24, 21, 18, 27, 34, 31, 22, 16]
+        speed: [0, 162, 242, 288, 308, 302, 296, 312, 322, 325],
+        regen: [0, 8, 16, 14, 12, 18, 22, 20, 16, 12]
     },
-    helios: {
-        label: 'Apex Helios GT',
+    audi: {
+        label: 'Audi R8 V10 Performance',
         color: '#ff7f4d',
-        speed: [0, 160, 230, 276, 298, 288, 274, 286, 300, 312],
-        regen: [0, 18, 30, 32, 28, 26, 22, 20, 18, 16]
+        speed: [0, 150, 228, 272, 292, 284, 276, 288, 298, 306],
+        regen: [0, 12, 20, 18, 16, 19, 17, 15, 14, 12]
     },
-    rift: {
-        label: 'Apex Rift RS',
+    camaro: {
+        label: 'Chevrolet Camaro ZL1',
         color: '#ff5f5f',
-        speed: [0, 178, 255, 302, 326, 320, 305, 320, 338, 350],
-        regen: [0, 10, 18, 14, 12, 20, 28, 24, 18, 11]
+        speed: [0, 142, 214, 262, 280, 272, 264, 276, 286, 294],
+        regen: [0, 6, 12, 10, 8, 12, 15, 13, 10, 7]
     }
 };
 
-const telemetryReference = [0, 170, 240, 285, 305, 300, 295, 305, 320, 330];
+const telemetryReference = [0, 160, 236, 280, 300, 296, 290, 302, 314, 322];
 const telemetryConfig = {
     speedMax: 380,
     regenMax: 40,
@@ -250,9 +300,9 @@ const cloneSeries = series => ({
 });
 
 const telemetryState = {
-    activeKey: 'vulcan',
-    fromData: cloneSeries(telemetryProfiles.vulcan),
-    toData: cloneSeries(telemetryProfiles.vulcan),
+    activeKey: 'ferrari',
+    fromData: cloneSeries(telemetryProfiles.ferrari),
+    toData: cloneSeries(telemetryProfiles.ferrari),
     progress: 1,
     animationStart: null,
     animationFrame: null,
@@ -304,10 +354,10 @@ const updateTelemetryCaption = series => {
     const lapTime = telemetryLapTimes[index];
     const speed = Math.round(series.speed[index]);
     const regen = Math.round(series.regen[index]);
-    const overboost = Math.max(0, Math.round(series.speed[index] - telemetryReference[index]));
+    const boost = Math.max(0, Math.round(series.speed[index] - telemetryReference[index]));
 
-    telemetryCaption.textContent = `T${lapTime}s · ${speed} km/h · Regeneração ${regen}%` +
-        (overboost > 0 ? ` · Overboost +${overboost} km/h` : '');
+    telemetryCaption.textContent = `T${lapTime}s · ${speed} km/h · Recuperação ${regen}%` +
+        (boost > 0 ? ` · Boost +${boost} km/h` : '');
 };
 
 const drawTelemetry = () => {
@@ -319,6 +369,10 @@ const drawTelemetry = () => {
     const ctx = telemetryCanvas.getContext('2d');
     if (!ctx || !telemetryState.bounds) {
         return;
+    }
+
+    if (telemetryTooltip) {
+        telemetryTooltip.classList.remove('is-visible');
     }
 
     const width = telemetryState.bounds.width;
@@ -451,6 +505,10 @@ const drawTelemetry = () => {
         const pointerX = xForIndex(idx);
         const speedY = yForSpeed(series.speed[idx]);
         const regenY = yForRegen(series.regen[idx]);
+        const lapTime = telemetryLapTimes[idx];
+        const speed = Math.round(series.speed[idx]);
+        const regen = Math.round(series.regen[idx]);
+        const boost = Math.max(0, Math.round(series.speed[idx] - telemetryReference[idx]));
 
         ctx.save();
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
@@ -474,6 +532,21 @@ const drawTelemetry = () => {
         ctx.fillStyle = 'rgba(255, 179, 71, 0.9)';
         ctx.fill();
         ctx.restore();
+
+        if (telemetryTooltip && telemetryVisual) {
+            const visualRect = telemetryVisual.getBoundingClientRect();
+            const canvasRect = telemetryCanvas.getBoundingClientRect();
+            const tooltipLeft = pointerX + canvasRect.left - visualRect.left;
+            const tooltipTop = Math.min(speedY, regenY) + canvasRect.top - visualRect.top - 40;
+            const clampedLeft = Math.min(visualRect.width - 32, Math.max(32, tooltipLeft));
+            const clampedTop = Math.max(12, tooltipTop);
+
+            telemetryTooltip.textContent = `T${lapTime}s • ${speed} km/h • Recuperação ${regen}%` +
+                (boost > 0 ? ` • Boost +${boost} km/h` : '');
+            telemetryTooltip.style.left = `${clampedLeft}px`;
+            telemetryTooltip.style.top = `${clampedTop}px`;
+            telemetryTooltip.classList.add('is-visible');
+        }
     }
 
     updateTelemetryCaption(series);
@@ -573,6 +646,9 @@ if (telemetryCanvas) {
         telemetryState.pointerRatio = null;
         updateTelemetryCaption(telemetryState.toData);
         drawTelemetry();
+        if (telemetryTooltip) {
+            telemetryTooltip.classList.remove('is-visible');
+        }
     });
 
     window.addEventListener('resize', () => {
